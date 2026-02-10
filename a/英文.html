@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HCC MVI/VETC Prediction (Step 1) + Prompt Builder (Step 2)</title>
+  <style>
+    :root{
+      --bg:#0b1220; --muted:#9fb0d0; --text:#e8efff; --line:rgba(255,255,255,.10);
+      --good:#2ee59d; --warn:#ffd166; --bad:#ff5c7a; --btn:#4c7dff;
+      --shadow: 0 12px 30px rgba(0,0,0,.35); --radius: 18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Microsoft YaHei", Arial, "Noto Sans CJK SC", sans-serif;
+      background: radial-gradient(1200px 800px at 20% 10%, rgba(76,125,255,.18), transparent 60%),
+                  radial-gradient(900px 650px at 80% 30%, rgba(46,229,157,.10), transparent 60%),
+                  var(--bg);
+      color:var(--text);
+    }
+    header{ padding:26px 18px 12px; max-width:1100px; margin:0 auto; }
+    h1{ margin:0 0 10px; font-size:20px; letter-spacing:.2px; }
+    .sub{ color:var(--muted); line-height:1.5; font-size:13px; max-width:980px; }
+    .wrap{
+      max-width:1100px; margin:0 auto; padding:14px 18px 40px;
+      display:grid; grid-template-columns: 1.05fr .95fr; gap:16px;
+    }
+    @media (max-width: 980px){ .wrap{grid-template-columns:1fr} }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow:hidden;
+    }
+    .hd{
+      padding:14px 16px; border-bottom:1px solid var(--line);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .bd{ padding:16px; }
+    .tag{
+      font-size:12px; color:var(--muted); border:1px solid var(--line);
+      padding:6px 10px; border-radius:999px; background: rgba(255,255,255,.03); white-space:nowrap;
+    }
+    .grid2{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 560px){ .grid2{grid-template-columns:1fr} }
+    label{ display:block; font-size:13px; color:var(--muted); margin:0 0 6px; }
+    input[type="number"], select, textarea{
+      width:100%; border-radius:12px; border:1px solid var(--line);
+      background: rgba(0,0,0,.18); color:var(--text); padding:10px 12px; outline:none;
+    }
+    textarea{ min-height:160px; resize:vertical; line-height:1.55; }
+    .row{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 12px; border:1px solid var(--line); border-radius:12px;
+      background: rgba(0,0,0,.18);
+    }
+    .row input[type="checkbox"]{ width:18px; height:18px; accent-color: var(--btn); }
+    .row .txt{ flex:1; color:var(--text); font-size:13px; }
+    .help{ font-size:12px; color:rgba(159,176,208,.75); margin-top:6px; line-height:1.4; }
+    .btns{ display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+    button{
+      border:0; border-radius:12px; padding:10px 12px; cursor:pointer;
+      color:var(--text); background: var(--btn); font-weight:600; letter-spacing:.2px;
+    }
+    button.secondary{ background: rgba(76,125,255,.18); border:1px solid rgba(76,125,255,.35); }
+    button.ghost{ background: transparent; border:1px solid var(--line); color:var(--muted); }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      border-radius:999px; padding:6px 10px; font-size:12px;
+      border:1px solid var(--line); background: rgba(255,255,255,.03);
+    }
+    .dot{width:9px;height:9px;border-radius:50%;}
+    .good{background:var(--good)} .bad{background:var(--bad)} .warn{background:var(--warn)}
+    .out{ display:grid; gap:10px; }
+    .kv{
+      display:flex; justify-content:space-between; gap:10px;
+      padding:10px 12px; border:1px dashed rgba(255,255,255,.14);
+      border-radius:12px; background: rgba(0,0,0,.14);
+    }
+    .kv .k{ color:var(--muted); font-size:12px; }
+    .kv .v{ font-size:13px; }
+    .divider{ height:1px; background: var(--line); margin:14px 0; }
+    .smallnote{ color:rgba(159,176,208,.75); font-size:12px; line-height:1.5; }
+    .tabs{ display:flex; gap:10px; padding:10px 16px 0; }
+    .tab{
+      padding:9px 12px; border-radius:999px; border:1px solid var(--line);
+      background: rgba(255,255,255,.03); color: var(--muted);
+      cursor:pointer; user-select:none; font-size:13px;
+    }
+    .tab.active{ background: rgba(76,125,255,.22); border-color: rgba(76,125,255,.4); color: var(--text); }
+    .hide{ display:none; }
+    .badge{ font-size:11px; padding:4px 8px; border-radius:999px; border:1px solid var(--line); color: var(--muted); }
+  </style>
+</head>
+
+<body>
+<header>
+  <h1>Hepatocellular Carcinoma (HCC) Noninvasive MVI/VETC Prediction (Step 1) + Standardized Prompt Builder (Step 2)</h1>
+  <div class="sub">
+    Step 1: Predict MVI/VETC probabilities using logistic regression (coefficients and thresholds) and output Positive/Negative;<br/>
+    Step 2: Structure inputs on the web page and generate a standardized prompt. Click the button to <strong>Copy</strong> and <strong>open ChatGPT</strong>; GPT will output clinical suggestions for surgery, adjuvant therapy, and follow-up.<br/>
+    <b>For research/education/case discussion only; not a substitute for clinical decision-making.</b>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- Left:input -->
+  <section class="card">
+    <div class="hd">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="pill"><span class="dot warn"></span><span>Input</span></div>
+        <span class="badge">Step 1 / Step 2</span>
+      </div>
+      <div class="tag">Formulas hidden</div>
+    </div>
+
+    <div class="tabs">
+      <div id="tab1" class="tab active" onclick="switchTab(1)">Step 1: Predict MVI / VETC</div>
+      <div id="tab2" class="tab" onclick="switchTab(2)">Step 2: Generate prompt and open GPT</div>
+    </div>
+
+    <div class="bd">
+      <!-- Step 1 -->
+      <div id="panel1">
+        <div class="grid2">
+          <div class="card" style="box-shadow:none;background:rgba(0,0,0,.10);">
+            <div class="hd">
+              <div class="pill"><span class="dot bad"></span><span>MVI variables</span></div>
+              <div class="tag mono">Threshold p ≥ 0.654974844</div>
+            </div>
+            <div class="bd">
+              <div style="margin-bottom:12px;">
+  <label>No. of slices with incomplete tumor capsule</label>
+  <input id="capsuleIncompleteSlices" type="number" step="1" min="0" placeholder="e.g., 3" />
+</div>
+<div style="margin-bottom:12px;">
+  <label>Total no. of tumor slices</label>
+  <input id="capsuleTotalSlices" type="number" step="1" min="0" placeholder="e.g., 10" />
+  <div class="help">Incomplete capsule rate = No. of slices with incomplete tumor capsule / Total no. of tumor slices; Use contrast-enhanced thin-slice MR images first; if no positive finding is identified, refer to other sequences. Current ratio: <span id="capsuleRatioAuto" class="mono">—</span></div>
+</div>
+
+
+              <div class="help">Tip: If any of the following imaging findings are present, please tick the checkbox.</div>
+
+              <div class="row">
+                <input id="intraArtery" type="checkbox" />
+                <div class="txt">Intratumoral artery (present=1 / absent=0)</div>
+              </div>
+              <div style="height:10px"></div>
+              <div class="row">
+                <input id="periT2" type="checkbox" />
+                <div class="txt">Peritumoral mild-to-moderate T2 hyperintensity (present=1 / absent=0)</div>
+              </div>
+              <div style="height:10px"></div>
+              <div class="row">
+                <input id="afp400" type="checkbox" />
+                <div class="txt">AFP &gt; 400 (yes=1 / no=0)</div>
+              </div>
+              <div style="height:10px"></div>
+              <div class="row">
+                <input id="childBC" type="checkbox" />
+                <div class="txt">Child–Pugh class B or C (yes=1 / no=0)</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="box-shadow:none;background:rgba(0,0,0,.10);">
+            <div class="hd">
+              <div class="pill"><span class="dot good"></span><span>VETC variables</span></div>
+              <div class="tag mono">Threshold p ≥ 0.607585306</div>
+            </div>
+            <div class="bd">
+              <div style="margin-bottom:12px;">
+                <label>Tumor size (cm)</label>
+                <input id="tumorSize" type="number" step="0.1" placeholder="e.g., 5.2" />
+              </div>
+
+              <div class="help">Tip: If any of the following imaging findings are present, please tick the checkbox.</div>
+
+              <div class="row">
+                <input id="nonPeripheralWashout" type="checkbox" />
+                <div class="txt">Nonperipheral washout(Yes=1 / No=0)</div>
+              </div>
+              <div style="height:10px"></div>
+              <div class="row">
+                <input id="ast40" type="checkbox" />
+                <div class="txt">AST &gt; 40(Yes=1 / No=0)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="btns">
+          <button onclick="calcAll()">Calculate MVI / VETC</button>
+          <button class="secondary" onclick="fillDemo()">Fill example values</button>
+          <button class="ghost" onclick="resetAll()">Reset</button>
+</div>
+
+        <div class="divider"></div>
+        <div class="smallnote">
+          Note: This page displays calculation results and conclusions only; formulas are not shown.
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div id="panel2" class="hide">
+        <div class="grid2">
+          <div>
+            <label>CNLC stage (select or fill in)</label>
+            <select id="cnlcStage">
+              <option value="">Select (or edit the blank in the prompt)</option>
+              <option value="Ia">Ia</option>
+              <option value="Ib">Ib</option>
+              <option value="IIa">IIa</option>
+              <option value="IIb">IIb</option>
+              <option value="IIIa">IIIa</option>
+              <option value="IIIb">IIIb</option>
+              <option value="IV">IV</option>
+              <option value="Other/unspecified">Other/unspecified</option>
+            </select>
+            <div class="help">We recommend completing Step 1 (MVI/VETC prediction) before proceeding.</div>
+          </div>
+</div>
+
+        <div style="margin-top:12px;">
+          <label>Prompt to send to GPT (editable)</label>
+          <textarea id="gptPrompt"></textarea>
+          <div class="help">Clicking the button will copy the prompt and open ChatGPT (new tab). Paste and send it in ChatGPT.</div>
+        </div>
+
+        <div class="btns">
+          <button onclick="sendToGPT()">Copy and open ChatGPT</button>
+          <button class="secondary" onclick="copyPromptOnly()">Copy prompt only</button>
+</div>
+
+        <div class="divider"></div>
+        <div class="smallnote">
+          Note: For compatibility across browsers and the ChatGPT web app, this tool uses a "copy + open" workflow (Step 2 output is not generated within this page).
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Right:results -->
+  <aside class="card">
+    <div class="hd">
+      <div class="pill"><span class="dot good"></span><span>Output</span></div>
+      <div class="tag">Most recent calculation</div>
+    </div>
+    <div class="bd">
+      <div class="out">
+        <div class="kv">
+          <div>
+            <div class="k">MVI:logit(p)</div>
+            <div id="mviLogit" class="v mono">—</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="k">MVI:p</div>
+            <div id="mviP" class="v mono">—</div>
+          </div>
+        </div>
+
+        <div class="kv">
+          <div class="k">MVI Conclusion</div>
+          <div id="mviDx" class="v">—</div>
+        </div>
+
+        <div class="kv">
+          <div>
+            <div class="k">VETC:logit(p)</div>
+            <div id="vetcLogit" class="v mono">—</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="k">VETC:p</div>
+            <div id="vetcP" class="v mono">—</div>
+          </div>
+        </div>
+
+        <div class="kv">
+          <div class="k">VETC Conclusion</div>
+          <div id="vetcDx" class="v">—</div>
+        </div>
+
+        <div class="btns">
+          <button class="secondary" onclick="copySummary()">Copy MVI/VETC summary</button>
+</div>
+
+        <div class="divider"></div>
+        <div class="smallnote">
+          Tip: If prediction has not been run, the Step 2 prompt will remind you to complete Step 1 first.
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  const TH_MVI  = 0.654974844;
+  const TH_VETC = 0.607585306;
+
+  function sigmoid(x){ return 1 / (1 + Math.exp(-x)); }
+  function fmt(x, digits=6){
+    if (x === null || x === undefined || Number.isNaN(x)) return "—";
+    return Number(x).toFixed(digits);
+  }
+  function yn(cbId){ return document.getElementById(cbId).checked ? 1 : 0; }
+  function getNumber(id){
+    const el = document.getElementById(id);
+    if (!el) return NaN;
+    const v = el.value;
+    if (v === "" || v === null || v === undefined) return NaN;
+    return Number(v);
+  }
+  function setText(id, text){ document.getElementById(id).textContent = text; }
+  function setDx(id, positive){
+    const el = document.getElementById(id);
+    el.innerHTML = positive
+      ? `<span class="pill"><span class="dot bad"></span><span>Positive / high risk</span></span>`
+      : `<span class="pill"><span class="dot good"></span><span>Negative / low risk</span></span>`;
+  }
+
+  function calcMVI(){
+    // Incomplete capsule rate = No. of slices with incomplete tumor capsule / Total no. of tumor slices
+    let incomplete = getNumber("capsuleIncompleteSlices");
+    let total = getNumber("capsuleTotalSlices");
+    if (Number.isNaN(incomplete) || incomplete < 0) incomplete = 0;
+    if (Number.isNaN(total) || total <= 0) total = 0;
+
+    let capsuleRatio = 0;
+    if (total > 0) capsuleRatio = incomplete / total;
+
+    // Update UI display
+    setText("capsuleRatioAuto", total > 0 ? fmt(capsuleRatio, 4) : "—");
+const intraArtery = yn("intraArtery");
+    const periT2 = yn("periT2");
+    const afp400 = yn("afp400");
+    const childBC = yn("childBC");
+
+    const logit =
+      -1.981604 +
+      2.061029 * capsuleRatio +
+      0.82065  * intraArtery +
+      0.788886 * periT2 +
+      0.652974 * afp400 +
+      (-1.131592) * childBC;
+
+    const p = sigmoid(logit);
+    const positive = p >= TH_MVI;
+
+    return { logit, p, positive, capsuleRatio, intraArtery, periT2, afp400, childBC };
+  }
+
+  function calcVETC(){
+    let size = getNumber("tumorSize");
+    if (Number.isNaN(size)) size = 0;
+
+    const nonPeripheralWashout = yn("nonPeripheralWashout");
+    const ast40 = yn("ast40");
+
+    const logit =
+      -2.525697 +
+      0.251952 * size +
+      1.456777 * nonPeripheralWashout +
+      0.586485 * ast40;
+
+    const p = sigmoid(logit);
+    const positive = p >= TH_VETC;
+
+    return { logit, p, positive, size, nonPeripheralWashout, ast40 };
+  }
+
+  let LAST = { mvi: null, vetc: null };
+
+  function calcAll(){
+    const mvi = calcMVI();
+    const vetc = calcVETC();
+    LAST.mvi = mvi;
+    LAST.vetc = vetc;
+
+    setText("mviLogit", fmt(mvi.logit, 6));
+    setText("mviP", fmt(mvi.p, 6));
+    setDx("mviDx", mvi.positive);
+
+    setText("vetcLogit", fmt(vetc.logit, 6));
+    setText("vetcP", fmt(vetc.p, 6));
+    setDx("vetcDx", vetc.positive);
+
+    refreshGPTPrompt();
+  }
+
+  function resetAll(){
+    ["capsuleIncompleteSlices","capsuleTotalSlices","tumorSize"].forEach(id => document.getElementById(id).value = "");
+    setText("capsuleRatioAuto","—");
+    ["intraArtery","periT2","afp400","childBC","nonPeripheralWashout","ast40"].forEach(id => document.getElementById(id).checked = false);
+    document.getElementById("cnlcStage").value = "";
+    document.getElementById("gptPrompt").value = "";
+
+    LAST.mvi = null; LAST.vetc = null;
+    ["mviLogit","mviP","vetcLogit","vetcP"].forEach(id => setText(id,"—"));
+    setText("mviDx","—"); setText("vetcDx","—");
+  }
+
+  function fillDemo(){
+    document.getElementById("capsuleIncompleteSlices").value = "3";
+    document.getElementById("capsuleTotalSlices").value = "10";
+    document.getElementById("intraArtery").checked = true;
+    document.getElementById("periT2").checked = true;
+    document.getElementById("afp400").checked = false;
+    document.getElementById("childBC").checked = false;
+
+    document.getElementById("tumorSize").value = "5.2";
+    document.getElementById("nonPeripheralWashout").checked = true;
+    document.getElementById("ast40").checked = true;
+
+    calcAll();
+  }
+
+  function switchTab(n){
+    document.getElementById("tab1").classList.toggle("active", n===1);
+    document.getElementById("tab2").classList.toggle("active", n===2);
+    document.getElementById("panel1").classList.toggle("hide", n!==1);
+    document.getElementById("panel2").classList.toggle("hide", n!==2);
+    refreshGPTPrompt();
+  }
+
+  function refreshGPTPrompt(){
+    const stage = document.getElementById("cnlcStage").value || "___";
+
+    let mviLine = "(Please run Step 1 (predict MVI) first)";
+    let vetcLine = "(Please run Step 1 (predict VETC) first)";
+
+    if (LAST.mvi){
+      mviLine = `MVI:p=${fmt(LAST.mvi.p,6)}(Threshold ${TH_MVI})→ ${LAST.mvi.positive ? "Positive/high risk" : "Negative/low risk"}`;
+    }
+    if (LAST.vetc){
+      vetcLine = `VETC:p=${fmt(LAST.vetc.p,6)}(Threshold ${TH_VETC})→ ${LAST.vetc.positive ? "Positive/high risk" : "Negative/low risk"}`;
+    }
+    const prompt =
+`You are a hepatobiliary surgeon. According to the China Liver Cancer Staging (CNLC) system, this patient is clinically assessed as stage ${stage}  and is scheduled for surgical resection.
+
+The patient's preoperative noninvasive prediction results are as follows (based on the provided logistic regression formulas and thresholds):
+- ${mviLine}
+- ${vetcLine}
+
+Based on the above noninvasive MVI and VETC conclusions, and guided by the CNLC system, provide an individualized surgical resection strategy, adjuvant therapy recommendations, and a follow-up plan, with rationale. Use the following output format:
+1) Surgical resection strategy: strategy + rationale;
+2) Individualized adjuvant therapy plan: plan + rationale;
+3) Follow-up plan: plan + rationale.`;
+
+    const box = document.getElementById("gptPrompt");
+    if (!box.value || box.value.includes("YouYesa hepatobiliary surgeon")) {
+      // Keep editable:Refresh only when empty or still template
+      box.value = prompt;
+    }
+  }
+
+  document.getElementById("cnlcStage").addEventListener("change", refreshGPTPrompt);
+// Incomplete capsule rate:inputUpdate display on input change(Do not force full recalculation)
+["capsuleIncompleteSlices","capsuleTotalSlices"].forEach(id=>{
+  const el = document.getElementById(id);
+  if (el){
+    el.addEventListener("input", ()=>{
+      const incomplete = getNumber("capsuleIncompleteSlices");
+      const total = getNumber("capsuleTotalSlices");
+      if (!Number.isNaN(total) && total > 0 && !Number.isNaN(incomplete) && incomplete >= 0){
+        setText("capsuleRatioAuto", fmt(incomplete/total, 4));
+      }else{
+        setText("capsuleRatioAuto", "—");
+      }
+    });
+  }
+});
+
+
+async function copyToClipboard(text){
+    try{
+      await navigator.clipboard.writeText(text);
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  async function sendToGPT(){
+    refreshGPTPrompt();
+    const text = document.getElementById("gptPrompt").value || "";
+    const ok = await copyToClipboard(text);
+    window.open("https://chatgpt.com/", "_blank", "noopener,noreferrer");
+    if (!ok){
+      alert("ChatGPT opened, but the browser blocked automatic copying. Please manually select and copy the prompt, then paste it into ChatGPT.");
+    } else {
+      alert("Prompt copied and ChatGPT opened. Please paste and send it in ChatGPT.");
+    }
+  }
+
+  async function copyPromptOnly(){
+    refreshGPTPrompt();
+    const text = document.getElementById("gptPrompt").value || "";
+    const ok = await copyToClipboard(text);
+    if (!ok) alert("The browser blocked automatic copying. Please manually select and copy the prompt.");
+    else alert("Prompt copied.");
+  }
+
+  async function copySummary(){
+    const mvi = LAST.mvi ? (LAST.mvi.positive ? "Positive/high risk" : "Negative/low risk") : "Not calculated";
+    const vetc = LAST.vetc ? (LAST.vetc.positive ? "Positive/high risk" : "Negative/low risk") : "Not calculated";
+    const text =
+`MVI:logit=${fmt(LAST.mvi?.logit,6)},p=${fmt(LAST.mvi?.p,6)},Threshold=${TH_MVI} → ${mvi}
+VETC:logit=${fmt(LAST.vetc?.logit,6)},p=${fmt(LAST.vetc?.p,6)},Threshold=${TH_VETC} → ${vetc}`;
+    const ok = await copyToClipboard(text);
+    if (!ok) alert("The browser blocked automatic copying:Please manuallyCopy.");
+    else alert("DoneCopy MVI/VETC summary.");
+  }
+
+  // Initial load
+  if (document.getElementById('capsuleRatioAuto')) setText('capsuleRatioAuto','—');
+  refreshGPTPrompt();
+</script>
+</body>
+</html>
