@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HCC MVI / VETC 预测（Step 1）+ 提示词构建（Step 2）</title>
+  <style>
+    :root{
+      --bg:#0b1220; --muted:#9fb0d0; --text:#e8efff; --line:rgba(255,255,255,.10);
+      --good:#2ee59d; --warn:#ffd166; --bad:#ff5c7a; --btn:#4c7dff;
+      --shadow: 0 12px 30px rgba(0,0,0,.35); --radius: 18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Microsoft YaHei", Arial, "Noto Sans CJK SC", sans-serif;
+      background: radial-gradient(1200px 800px at 20% 10%, rgba(76,125,255,.18), transparent 60%),
+                  radial-gradient(900px 650px at 80% 30%, rgba(46,229,157,.10), transparent 60%),
+                  var(--bg);
+      color:var(--text);
+    }
+    header{ padding:26px 18px 12px; max-width:1100px; margin:0 auto; }
+    h1{ margin:0 0 10px; font-size:20px; letter-spacing:.2px; }
+    .sub{ color:var(--muted); line-height:1.5; font-size:13px; max-width:980px; }
+    .wrap{
+      max-width:1100px; margin:0 auto; padding:14px 18px 40px;
+      display:grid; grid-template-columns: 1.05fr .95fr; gap:16px;
+    }
+    @media (max-width: 980px){ .wrap{grid-template-columns:1fr} }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow:hidden;
+    }
+    .hd{
+      padding:14px 16px; border-bottom:1px solid var(--line);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .bd{ padding:16px; }
+    .tag{
+      font-size:12px; color:var(--muted); border:1px solid var(--line);
+      padding:6px 10px; border-radius:999px; background: rgba(255,255,255,.03); white-space:nowrap;
+    }
+    .grid2{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 560px){ .grid2{grid-template-columns:1fr} }
+    label{ display:block; font-size:13px; color:var(--muted); margin:0 0 6px; }
+    input[type="number"], select, textarea{
+      width:100%; border-radius:12px; border:1px solid var(--line);
+      background: rgba(0,0,0,.18); color:var(--text); padding:10px 12px; outline:none;
+    }
+    textarea{ min-height:160px; resize:vertical; line-height:1.55; }
+    .row{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 12px; border:1px solid var(--line); border-radius:12px;
+      background: rgba(0,0,0,.18);
+    }
+    .row input[type="checkbox"]{ width:18px; height:18px; accent-color: var(--btn); }
+    .row .txt{ flex:1; color:var(--text); font-size:13px; }
+    .help{ font-size:12px; color:rgba(159,176,208,.75); margin-top:6px; line-height:1.4; }
+    .btns{ display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+    button{
+      border:0; border-radius:12px; padding:10px 12px; cursor:pointer;
+      color:var(--text); background: var(--btn); font-weight:600; letter-spacing:.2px;
+    }
+    button.secondary{ background: rgba(76,125,255,.18); border:1px solid rgba(76,125,255,.35); }
+    button.ghost{ background: transparent; border:1px solid var(--line); color:var(--muted); }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      border-radius:999px; padding:6px 10px; font-size:12px;
+      border:1px solid var(--line); background: rgba(255,255,255,.03);
+    }
+    .dot{width:9px;height:9px;border-radius:50%;}
+    .good{background:var(--good)} .bad{background:var(--bad)} .warn{background:var(--warn)}
+    .out{ display:grid; gap:10px; }
+    .kv{
+      display:flex; justify-content:space-between; gap:10px;
+      padding:10px 12px; border:1px dashed rgba(255,255,255,.14);
+      border-radius:12px; background: rgba(0,0,0,.14);
+    }
+    .kv .k{ color:var(--muted); font-size:12px; }
+    .kv .v{ font-size:13px; }
+    .divider{ height:1px; background: var(--line); margin:14px 0; }
+    .smallnote{ color:rgba(159,176,208,.75); font-size:12px; line-height:1.5; }
+    .tabs{ display:flex; gap:10px; padding:10px 16px 0; }
+    .tab{
+      padding:9px 12px; border-radius:999px; border:1px solid var(--line);
+      background: rgba(255,255,255,.03); color: var(--muted);
+      cursor:pointer; user-select:none; font-size:13px;
+    }
+    .tab.active{ background: rgba(76,125,255,.22); border-color: rgba(76,125,255,.4); color: var(--text); }
+    .hide{ display:none; }
+    .badge{ font-size:11px; padding:4px 8px; border-radius:999px; border:1px solid var(--line); color: var(--muted); }
+  </style>
+</head>
+
+<body>
+<header>
+  <h1>肝细胞癌（HCC）MVI / VETC 无创预测（Step 1）+ 标准化提示词构建（Step 2）</h1>
+  <div class="sub">
+    Step 1：基于逻辑回归模型（回归系数与阈值）预测 MVI、VETC 概率并输出阳性/阴性；<br/>
+    Step 2：在网页端结构化整合信息并生成标准化提示词，点击按钮自动<strong>复制</strong>并<strong>跳转到 ChatGPT</strong>，由 GPT 输出手术/辅助治疗/随访等临床建议。<br/>
+    <b>仅用于科研/教学/病历讨论，不替代临床决策。</b>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- 左侧：输入 -->
+  <section class="card">
+    <div class="hd">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="pill"><span class="dot warn"></span><span>输入区</span></div>
+        <span class="badge">Step 1 / Step 2</span>
+      </div>
+      <div class="tag">公式已隐藏</div>
+    </div>
+
+    <div class="tabs">
+      <div id="tab1" class="tab active" onclick="switchTab(1)">Step 1：预测 MVI / VETC</div>
+      <div id="tab2" class="tab" onclick="switchTab(2)">Step 2：生成提示词并跳转GPT</div>
+    </div>
+
+    <div class="bd">
+      <!-- Step 1 -->
+      <div id="panel1">
+        <div class="grid2">
+          <div class="card" style="box-shadow:none;background:rgba(0,0,0,.10);">
+            <div class="hd">
+              <div class="pill"><span class="dot bad"></span><span>MVI 变量</span></div>
+              <div class="tag mono">阈值 p ≥ 0.654974844</div>
+            </div>
+            <div class="bd">
+              <div style="margin-bottom:12px;">
+  <label>肿瘤包膜不完整横截面数</label>
+  <input id="capsuleIncompleteSlices" type="number" step="1" min="0" placeholder="例如 3" />
+</div>
+<div style="margin-bottom:12px;">
+  <label>肿瘤总横截面数</label>
+  <input id="capsuleTotalSlices" type="number" step="1" min="0" placeholder="例如 10" />
+  <div class="help">肿瘤包膜不完整比例 = 肿瘤包膜不完整横截面数 / 肿瘤总横截面数；以增强薄层MR图像为先，若未发现阳性再以其他序列为准。当前比例：<span id="capsuleRatioAuto" class="mono">—</span></div>
+</div>
+
+
+              <div class="help">提示：如存在以下征象，请在对应项目前打钩。</div>
+
+              <div class="row">
+                <input id="intraArtery" type="checkbox" />
+                <div class="txt">瘤内动脉（有=1 / 无=0）</div>
+              </div>
+              <div style="height:10px"></div>
+              <div class="row">
+                <input id="periT2" type="checkbox" />
+                <div class="txt">瘤周 T2WI 轻-中度高信号（有=1 / 无=0）</div>
+              </div>
+              <div style="height:10px"></div>
+              <div class="row">
+                <input id="afp400" type="checkbox" />
+                <div class="txt">AFP &gt; 400（是=1 / 否=0）</div>
+              </div>
+              <div style="height:10px"></div>
+              <div class="row">
+                <input id="childBC" type="checkbox" />
+                <div class="txt">Child-Pugh B 或 C（是=1 / 否=0）</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="box-shadow:none;background:rgba(0,0,0,.10);">
+            <div class="hd">
+              <div class="pill"><span class="dot good"></span><span>VETC 变量</span></div>
+              <div class="tag mono">阈值 p ≥ 0.607585306</div>
+            </div>
+            <div class="bd">
+              <div style="margin-bottom:12px;">
+                <label>肿瘤大小测量（cm）</label>
+                <input id="tumorSize" type="number" step="0.1" placeholder="例如 5.2" />
+              </div>
+
+              <div class="help">提示：如存在以下征象，请在对应项目前打钩。</div>
+
+              <div class="row">
+                <input id="nonPeripheralWashout" type="checkbox" />
+                <div class="txt">非周边廓清（是=1 / 否=0）</div>
+              </div>
+              <div style="height:10px"></div>
+              <div class="row">
+                <input id="ast40" type="checkbox" />
+                <div class="txt">AST &gt; 40（是=1 / 否=0）</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="btns">
+          <button onclick="calcAll()">计算 MVI / VETC</button>
+          <button class="secondary" onclick="fillDemo()">填入示例值</button>
+          <button class="ghost" onclick="resetAll()">清空</button>
+</div>
+
+        <div class="divider"></div>
+        <div class="smallnote">
+          备注：本页仅展示计算结果与结论，不展示公式文本。
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div id="panel2" class="hide">
+        <div class="grid2">
+          <div>
+            <label>CNLC 分期（填空/选择）</label>
+            <select id="cnlcStage">
+              <option value="">请选择（或自行修改提示词中的空白处）</option>
+              <option value="Ia">Ia</option>
+              <option value="Ib">Ib</option>
+              <option value="IIa">IIa</option>
+              <option value="IIb">IIb</option>
+              <option value="IIIa">IIIa</option>
+              <option value="IIIb">IIIb</option>
+              <option value="IV">IV</option>
+              <option value="其他/未注明">其他/未注明</option>
+            </select>
+            <div class="help">建议先在 Step 1 完成 MVI/VETC 预测后再进入本页。</div>
+          </div>
+</div>
+
+        <div style="margin-top:12px;">
+          <label>发送到 GPT 的提示词（可编辑）</label>
+          <textarea id="gptPrompt"></textarea>
+          <div class="help">点击按钮会先复制提示词，再打开 ChatGPT（新标签页）。打开后直接粘贴并发送即可。</div>
+        </div>
+
+        <div class="btns">
+          <button onclick="sendToGPT()">复制并跳转到 ChatGPT</button>
+          <button class="secondary" onclick="copyPromptOnly()">仅复制提示词</button>
+</div>
+
+        <div class="divider"></div>
+        <div class="smallnote">
+          说明：为了兼容所有浏览器与 ChatGPT 网页端，本工具采用“复制 + 跳转”的方式（不会在网页内直接生成第二步输出）。
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 右侧：结果 -->
+  <aside class="card">
+    <div class="hd">
+      <div class="pill"><span class="dot good"></span><span>输出区</span></div>
+      <div class="tag">最近一次计算结果</div>
+    </div>
+    <div class="bd">
+      <div class="out">
+        <div class="kv">
+          <div>
+            <div class="k">MVI：logit(p)</div>
+            <div id="mviLogit" class="v mono">—</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="k">MVI：p</div>
+            <div id="mviP" class="v mono">—</div>
+          </div>
+        </div>
+
+        <div class="kv">
+          <div class="k">MVI 结论</div>
+          <div id="mviDx" class="v">—</div>
+        </div>
+
+        <div class="kv">
+          <div>
+            <div class="k">VETC：logit(p)</div>
+            <div id="vetcLogit" class="v mono">—</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="k">VETC：p</div>
+            <div id="vetcP" class="v mono">—</div>
+          </div>
+        </div>
+
+        <div class="kv">
+          <div class="k">VETC 结论</div>
+          <div id="vetcDx" class="v">—</div>
+        </div>
+
+        <div class="btns">
+          <button class="secondary" onclick="copySummary()">复制 MVI/VETC 结论</button>
+</div>
+
+        <div class="divider"></div>
+        <div class="smallnote">
+          提示：若未预测，Step 2 的提示词会提示你先完成 Step 1。
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  const TH_MVI  = 0.654974844;
+  const TH_VETC = 0.607585306;
+
+  function sigmoid(x){ return 1 / (1 + Math.exp(-x)); }
+  function fmt(x, digits=6){
+    if (x === null || x === undefined || Number.isNaN(x)) return "—";
+    return Number(x).toFixed(digits);
+  }
+  function yn(cbId){ return document.getElementById(cbId).checked ? 1 : 0; }
+  function getNumber(id){
+    const el = document.getElementById(id);
+    if (!el) return NaN;
+    const v = el.value;
+    if (v === "" || v === null || v === undefined) return NaN;
+    return Number(v);
+  }
+  function setText(id, text){ document.getElementById(id).textContent = text; }
+  function setDx(id, positive){
+    const el = document.getElementById(id);
+    el.innerHTML = positive
+      ? `<span class="pill"><span class="dot bad"></span><span>阳性 / 高风险</span></span>`
+      : `<span class="pill"><span class="dot good"></span><span>阴性 / 低风险</span></span>`;
+  }
+
+  function calcMVI(){
+    // 肿瘤包膜不完整比例 = 肿瘤包膜不完整横截面数 / 肿瘤总横截面数
+    let incomplete = getNumber("capsuleIncompleteSlices");
+    let total = getNumber("capsuleTotalSlices");
+    if (Number.isNaN(incomplete) || incomplete < 0) incomplete = 0;
+    if (Number.isNaN(total) || total <= 0) total = 0;
+
+    let capsuleRatio = 0;
+    if (total > 0) capsuleRatio = incomplete / total;
+
+    // 更新界面显示
+    setText("capsuleRatioAuto", total > 0 ? fmt(capsuleRatio, 4) : "—");
+const intraArtery = yn("intraArtery");
+    const periT2 = yn("periT2");
+    const afp400 = yn("afp400");
+    const childBC = yn("childBC");
+
+    const logit =
+      -1.981604 +
+      2.061029 * capsuleRatio +
+      0.82065  * intraArtery +
+      0.788886 * periT2 +
+      0.652974 * afp400 +
+      (-1.131592) * childBC;
+
+    const p = sigmoid(logit);
+    const positive = p >= TH_MVI;
+
+    return { logit, p, positive, capsuleRatio, intraArtery, periT2, afp400, childBC };
+  }
+
+  function calcVETC(){
+    let size = getNumber("tumorSize");
+    if (Number.isNaN(size)) size = 0;
+
+    const nonPeripheralWashout = yn("nonPeripheralWashout");
+    const ast40 = yn("ast40");
+
+    const logit =
+      -2.525697 +
+      0.251952 * size +
+      1.456777 * nonPeripheralWashout +
+      0.586485 * ast40;
+
+    const p = sigmoid(logit);
+    const positive = p >= TH_VETC;
+
+    return { logit, p, positive, size, nonPeripheralWashout, ast40 };
+  }
+
+  let LAST = { mvi: null, vetc: null };
+
+  function calcAll(){
+    const mvi = calcMVI();
+    const vetc = calcVETC();
+    LAST.mvi = mvi;
+    LAST.vetc = vetc;
+
+    setText("mviLogit", fmt(mvi.logit, 6));
+    setText("mviP", fmt(mvi.p, 6));
+    setDx("mviDx", mvi.positive);
+
+    setText("vetcLogit", fmt(vetc.logit, 6));
+    setText("vetcP", fmt(vetc.p, 6));
+    setDx("vetcDx", vetc.positive);
+
+    refreshGPTPrompt();
+  }
+
+  function resetAll(){
+    ["capsuleIncompleteSlices","capsuleTotalSlices","tumorSize"].forEach(id => document.getElementById(id).value = "");
+    setText("capsuleRatioAuto","—");
+    ["intraArtery","periT2","afp400","childBC","nonPeripheralWashout","ast40"].forEach(id => document.getElementById(id).checked = false);
+    document.getElementById("cnlcStage").value = "";
+    document.getElementById("gptPrompt").value = "";
+
+    LAST.mvi = null; LAST.vetc = null;
+    ["mviLogit","mviP","vetcLogit","vetcP"].forEach(id => setText(id,"—"));
+    setText("mviDx","—"); setText("vetcDx","—");
+  }
+
+  function fillDemo(){
+    document.getElementById("capsuleIncompleteSlices").value = "3";
+    document.getElementById("capsuleTotalSlices").value = "10";
+    document.getElementById("intraArtery").checked = true;
+    document.getElementById("periT2").checked = true;
+    document.getElementById("afp400").checked = false;
+    document.getElementById("childBC").checked = false;
+
+    document.getElementById("tumorSize").value = "5.2";
+    document.getElementById("nonPeripheralWashout").checked = true;
+    document.getElementById("ast40").checked = true;
+
+    calcAll();
+  }
+
+  function switchTab(n){
+    document.getElementById("tab1").classList.toggle("active", n===1);
+    document.getElementById("tab2").classList.toggle("active", n===2);
+    document.getElementById("panel1").classList.toggle("hide", n!==1);
+    document.getElementById("panel2").classList.toggle("hide", n!==2);
+    refreshGPTPrompt();
+  }
+
+  function refreshGPTPrompt(){
+    const stage = document.getElementById("cnlcStage").value || "___";
+
+    let mviLine = "（请先在 Step 1 预测 MVI）";
+    let vetcLine = "（请先在 Step 1 预测 VETC）";
+
+    if (LAST.mvi){
+      mviLine = `MVI：p=${fmt(LAST.mvi.p,6)}（阈值 ${TH_MVI}）→ ${LAST.mvi.positive ? "阳性/高风险" : "阴性/低风险"}`;
+    }
+    if (LAST.vetc){
+      vetcLine = `VETC：p=${fmt(LAST.vetc.p,6)}（阈值 ${TH_VETC}）→ ${LAST.vetc.positive ? "阳性/高风险" : "阴性/低风险"}`;
+    }
+    const prompt =
+`你是一位肝胆外科医生，该患者参照中国肝癌的分期(China Liver Cancer Staging, CNLC)标准经临床综合评估后为 ${stage} 期，拟行手术切除。
+
+该患者术前无创预测结论如下（基于给定逻辑回归公式与阈值）：
+- ${mviLine}
+- ${vetcLine}
+
+请根据以上 MVI、VETC 的无创诊断结论，以 CNLC 为指导，给出针对该患者的个性化手术切除方式、辅助治疗建议及随访计划，并给出理由。输出内容模板为：
+1）手术切除方式：方式+理由；
+2）个性化辅助治疗方案：方案+理由；
+3）随访方案：方案+理由。`;
+
+    const box = document.getElementById("gptPrompt");
+    if (!box.value || box.value.includes("你是一位肝胆外科医生")) {
+      // 保持可编辑：仅在空白或仍为模板时刷新
+      box.value = prompt;
+    }
+  }
+
+  document.getElementById("cnlcStage").addEventListener("change", refreshGPTPrompt);
+// 肿瘤包膜比例：输入变化时实时更新显示（不强制重算模型）
+["capsuleIncompleteSlices","capsuleTotalSlices"].forEach(id=>{
+  const el = document.getElementById(id);
+  if (el){
+    el.addEventListener("input", ()=>{
+      const incomplete = getNumber("capsuleIncompleteSlices");
+      const total = getNumber("capsuleTotalSlices");
+      if (!Number.isNaN(total) && total > 0 && !Number.isNaN(incomplete) && incomplete >= 0){
+        setText("capsuleRatioAuto", fmt(incomplete/total, 4));
+      }else{
+        setText("capsuleRatioAuto", "—");
+      }
+    });
+  }
+});
+
+
+async function copyToClipboard(text){
+    try{
+      await navigator.clipboard.writeText(text);
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  async function sendToGPT(){
+    refreshGPTPrompt();
+    const text = document.getElementById("gptPrompt").value || "";
+    const ok = await copyToClipboard(text);
+    window.open("https://chatgpt.com/", "_blank", "noopener,noreferrer");
+    if (!ok){
+      alert("已打开 ChatGPT，但浏览器阻止自动复制：请手动全选提示词并复制，然后粘贴到 ChatGPT。");
+    } else {
+      alert("提示词已复制并已打开 ChatGPT：请在 ChatGPT 中粘贴并发送。");
+    }
+  }
+
+  async function copyPromptOnly(){
+    refreshGPTPrompt();
+    const text = document.getElementById("gptPrompt").value || "";
+    const ok = await copyToClipboard(text);
+    if (!ok) alert("浏览器阻止自动复制：请手动全选提示词并复制。");
+    else alert("提示词已复制。");
+  }
+
+  async function copySummary(){
+    const mvi = LAST.mvi ? (LAST.mvi.positive ? "阳性/高风险" : "阴性/低风险") : "未计算";
+    const vetc = LAST.vetc ? (LAST.vetc.positive ? "阳性/高风险" : "阴性/低风险") : "未计算";
+    const text =
+`MVI：logit=${fmt(LAST.mvi?.logit,6)}，p=${fmt(LAST.mvi?.p,6)}，阈值=${TH_MVI} → ${mvi}
+VETC：logit=${fmt(LAST.vetc?.logit,6)}，p=${fmt(LAST.vetc?.p,6)}，阈值=${TH_VETC} → ${vetc}`;
+    const ok = await copyToClipboard(text);
+    if (!ok) alert("浏览器阻止自动复制：请手动复制。");
+    else alert("已复制 MVI/VETC 结论。");
+  }
+
+  // 初次加载
+  if (document.getElementById('capsuleRatioAuto')) setText('capsuleRatioAuto','—');
+  refreshGPTPrompt();
+</script>
+</body>
+</html>
